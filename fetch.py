@@ -1,19 +1,13 @@
 import requests
 import json
 import pandas as pd
-
-def createCSV(names,ratings,urls):
-    names = pd.Series(names)
-    ratings = pd.Series(ratings)
-    urls = pd.Series(urls)
-    problems = pd.DataFrame({
-        'name' : names.values,
-        'rating' : ratings.values,
-        'url' : urls.values
-    })
-    print("Shape = " + str(problems.shape))
+import streamlit as st
+def createCSV(problems):
     problems.to_csv("problems.csv",index=False)
 
+def getDataFrame(names,ratings,urls):
+    df = pd.DataFrame({'Name' : names,'Rating' : ratings,'URL' : urls})
+    return df
 def createProblemURL (contestId,problemIndex):
     str = "https://codeforces.com/problemset/problem/{}/{}".format(contestId,problemIndex)
     return str
@@ -25,11 +19,11 @@ def getProblemID (contestId,problemIndex):
 def getUserProblemSet(username,L,R):
     r = requests.get("https://codeforces.com/api/user.status?handle={}".format(username))
     if(r.status_code != requests.codes.ok):
-        print("Couldnt fetch object!")
+        st.error("Couldnt fetch object!")
 
     r = json.loads(r.text)
     if(r["status"] != "OK"):
-        print("Error fetching your data!!")
+        st.error("Error fetching your data!!")
         exit(0)
     
     solved_problems = set()
@@ -38,7 +32,7 @@ def getUserProblemSet(username,L,R):
         if(submission["verdict"] == "OK"):
             # special problems having no rating will not have rating field
             try:
-                submission["problem"]["rating"]
+                _ = submission["problem"]["rating"]
             except KeyError:
                 continue
         
@@ -55,7 +49,7 @@ def getProblems(user_list,username,L,R):
     for userID in user_list:
         r = requests.get("https://codeforces.com/api/user.status?handle={}".format(userID))
         if(r.status_code != requests.codes.ok):
-            print("Couldnt fetch user object! for {}".formate(userID))
+            st.error("Couldnt fetch user object! for {}".format(userID))
             failed_list.append(userID)
             continue
 
@@ -69,7 +63,7 @@ def getProblems(user_list,username,L,R):
             if(submission["verdict"] == "OK"):
                 # special problems having no rating will not have rating field
                 try:
-                    submission["problem"]["rating"]
+                    _ = submission["problem"]["rating"]
                 except KeyError:
                     continue
             
@@ -83,23 +77,35 @@ def getProblems(user_list,username,L,R):
                 problem_url = createProblemURL(submission["problem"]["contestId"],submission["problem"]["index"])
                 problems.add((problem_name,problem_rating,problem_url))
 
-    problemNames = []
-    problemRatings = []
-    problemUrls = []
-    for n,r,u in problems:
-        problemNames.append(n)
-        problemRatings.append(r)
-        problemUrls.append(u)
+    
     if len(failed_list) > 0 :
-        print("Failed userID's : ",end=' ')
-        print(failed_list)
-    return problemNames,problemRatings,problemUrls
+        st.error("Failed userID's : ",end=' ')
+        st.error(failed_list)
+    return zip(*problems) if problems else ([],[],[])
 
-print("Enter your username : ")
-username = input()
-print("Enter user list : ")
-user_list = (input().split())
-print("Enter the rating range [L,R] : ")
-L,R = map(int,(input().split()))
-names,ratings,urls = getProblems(user_list,username,L,R)
-createCSV(names,ratings,urls)
+
+st.title("Welcome to CF Problem Finder!")
+st.markdown("""
+            Tired of finding problems from codeforces? Does sorting by solve count feelboring to you?
+            Do not want the hassle of codeforces user-list ? Then CF Problem Finder is the right tool for you!
+            
+            
+            """)
+username = st.text_input("Enter your codeforces username : ")
+user_list = st.text_input("Enter the list of users (space seperated): ")
+L = st.number_input("Enter the lower bound of rating : ")
+R = st.number_input("Enter the upper bound of rating : ")
+
+if st.button("Find Problems"):
+    if username and user_list:
+        user_list = user_list.strip().split()
+        names,ratings,urls = getProblems(user_list,username,L,R)
+        df = getDataFrame(names,ratings,urls)
+        st.success(f"Found {len(df)} problems")
+        st.dataframe(df,)
+        createCSV(df)
+        st.download_button("Download CSV",data=df.to_csv(index=False),file_name="problems.csv")
+    else:
+        st.warning("Enter both username and user list!!")
+
+
